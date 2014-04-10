@@ -57,9 +57,9 @@ class GenerateBase(object):
         self.clear_outdir()
         self.initialize_root()
         previous = None
-        iterator = EntryIterator(dictType='oed',
+        iterator = EntryIterator(dict_type='oed',
                                  verbosity='low',
-                                 fixLigatures=True)
+                                 fix_ligatures=True)
 
         # Iterate through all entries in OED, processing each and storing
         #   the results in a buffer
@@ -100,12 +100,20 @@ class GenerateBase(object):
             self.process_block(sense)
 
     def process_block(self, block):
+        # If this is an unevidenced subentry, set the dates to the
+        #  publication date of the parent entry
+        if ((not block.date().start or block.date().start > 2050)
+                and self.entry.first_published()):
+            block.date().reset('start', self.entry.first_published())
+            block.date().reset('end', self.entry.first_published())
+
         if (block.primary_wordclass().penn is not None and
                 not block.lemma_manager().is_affix() and
+                not block.lemma.lower().startswith('the ') and
                 not block.is_initial_letter() and
                 not block.is_cross_reference() and
+                block.date().start and
                 block.num_quotations() >= ENTRY_SIZE_MINIMUM):
-
             if block.tag == 's1':
                 block.parent_id = self.entry.paired_with()
             elif block.tag == 'sub' and block.lemma == self.entry.headword:
@@ -295,12 +303,10 @@ class GelBlock(object):
                     if variant_form.regional:
                         morphset_node.set('regional', 'true')
 
-                    d1, d2 = variant_form.date.constrain((
-                        self.block.date().start,
-                        self.block.date().projected_end(),
-                        ))
-                    dt = DateRange(start=d1, end=d2, hardEnd=True)
-                    morphset_node.append(dt.to_xml(omitProjected=True))
+                    # Date node for the variant form
+                    vardate_node = _variant_date_node(variant_form.date,
+                                                      self.block.date())
+                    morphset_node.append(vardate_node)
 
                     # Put a single type in the morphset, representing
                     #  the base form.
@@ -554,3 +560,20 @@ def _compile_odo_lemmas(**kwargs):
         output[dictname] = lemmas
 
     return output
+
+
+def _variant_date_node(variant_date, block_date):
+    """
+    Return a date-range node for a variant form
+    """
+    # Constrain the variant's dates, so that they don't
+    # fall outside the limits of the parent entry
+    start_date, end_date = variant_date.constrain((
+        block_date.start,
+        block_date.projected_end(),
+    ))
+    # Create a new date range with the constrained dates
+    constrained_date_range = DateRange(start=start_date,
+                                       end=end_date,
+                                       hardEnd=True)
+    return constrained_date_range.to_xml(omitProjected=True)

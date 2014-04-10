@@ -16,7 +16,7 @@ from lex.lemma import Lemma
 MORPHOLOGY = MmhCache()
 INFLECTOR = Inflection()
 ARCHAIC = ArchaicEndings()
-INFLECTABLE = set(('NN', 'JJ', 'VB'))
+INFLECTABLE = set(('NN', 'JJ', 'RB', 'VB'))
 UNINFLECTABLE = re.compile(r'(^the |[ -](and)[ -])', re.I)
 DONT_PLURALIZE = re.compile(r'[a-z]{3}(' + gelconfig.UNPLURALIZED + ')$', re.I)
 
@@ -54,7 +54,7 @@ def _process_wordclass_set(wordclass_set):
                 inflections, matched = _inflect_from_mmh(morphset, wordclass)
                 if not matched:
                     inflections = _compute_inflections(morphset, wordclass,
-                                                      model=model)
+                                                       model=model)
                 for inflection in inflections:
                     inf_set.add_inflection(inflection)
             morphset.inflections = inf_set
@@ -182,8 +182,8 @@ def _compute_inflections(morphset, wordclass, model=None):
     elif wordclass == 'NN':
         return _compute_plural(morphset, model)
     else:
-        # We don't compute inflections for adjectives; if it's not in the
-        #  morphology hub, we assume it does not inflect.
+        # We don't compute inflections for adjectives or adverbs;
+        #  if it's not in the morphology hub, we assume it does not inflect.
         return []
 
 

@@ -63,7 +63,7 @@ DEFINITION_LENGTH = 100
 
 # Minimum number of quotations a lemma must have to be included.
 #  Set to '0' to include all lemmas, even unevidenced ones.
-MINIMUM_NUM_QUOTATIONS = 1
+MINIMUM_NUM_QUOTATIONS = 0
 
 
 #=====================================================================
