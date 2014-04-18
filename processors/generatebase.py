@@ -100,6 +100,9 @@ class GenerateBase(object):
             self.process_block(sense)
 
     def process_block(self, block):
+        """
+        Process an individual block (may be a <s1> block or a subentry).
+        """
         # If this is an unevidenced subentry, set the dates to the
         #  publication date of the parent entry
         if ((not block.date().start or block.date().start > 2050)
@@ -107,30 +110,35 @@ class GenerateBase(object):
             block.date().reset('start', self.entry.first_published())
             block.date().reset('end', self.entry.first_published())
 
-        if (block.primary_wordclass().penn is not None and
-                not block.lemma_manager().is_affix() and
-                not block.lemma.lower().startswith('the ') and
-                not block.is_initial_letter() and
-                not block.is_cross_reference() and
-                block.date().start and
-                block.num_quotations() >= ENTRY_SIZE_MINIMUM):
-            if block.tag == 's1':
-                block.parent_id = self.entry.paired_with()
-            elif block.tag == 'sub' and block.lemma == self.entry.headword:
-                block.parent_id = self.entry.s1blocks()[0].node_id()
-            else:
-                block.parent_id = None
+        # Bug out if this block is not usable
+        if (not block.primary_wordclass().penn or
+                block.lemma_manager().is_affix() or
+                block.lemma.lower().startswith('the ') or
+                block.is_initial_letter() or
+                block.is_cross_reference() or
+                not block.date().start or
+                block.num_quotations() < ENTRY_SIZE_MINIMUM):
+            return
+        if block.tag == 's1' and block.num_quotations() == 0:
+            return
 
-            # Add a '~' into closed compounds/derivatives, to enable
-            #  variation to be applied to individual components.
-            self.split_compound(block)
+        if block.tag == 's1':
+            block.parent_id = self.entry.paired_with()
+        elif block.tag == 'sub' and block.lemma == self.entry.headword:
+            block.parent_id = self.entry.s1blocks()[0].node_id()
+        else:
+            block.parent_id = None
 
-            gel_block = GelBlock(block, self.entry)
-            gel_block.set_dates()
-            gel_block.assign_wordclasses()
-            node = gel_block.construct_entry_node()
-            if gel_block.is_usable():
-                self.root.append(node)
+        # Add a '~' into closed compounds/derivatives, to enable
+        #  variation to be applied to individual components.
+        self.split_compound(block)
+
+        gel_block = GelBlock(block, self.entry)
+        gel_block.set_dates()
+        gel_block.assign_wordclasses()
+        node = gel_block.construct_entry_node()
+        if gel_block.is_usable():
+            self.root.append(node)
 
     def split_compound(self, block):
         """
