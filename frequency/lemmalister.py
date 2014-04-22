@@ -61,7 +61,7 @@ class LemmaLister(object):
                             start=str(item.start),
                             end=str(item.end),
                             base=item.baseform,
-                            )
+                        )
                         if item.xrid:
                             instance_node.set('xrid', item.xrid)
                         if item.xnode:
@@ -80,9 +80,7 @@ class LemmaLister(object):
             os.unlink(os.path.join(self.subdir, f))
 
     def writebuffer(self):
-        xml_string = etree.tostring(self.doc,
-                                    pretty_print=True,
-                                    encoding='unicode')
+        xml_string = etree.tounicode(self.doc, pretty_print=True)
         filename = self.next_filename()
         with open(filename, 'w') as filehandle:
             filehandle.write(xml_string)
@@ -136,7 +134,8 @@ def _process_wordclass(entry, wordclass_set):
             continue
         if (i > 0 and
                 wordclass_set.wordclass != 'NP' and
-                morphset.sort not in permissible_forms):
+                morphset.sort not in permissible_forms and
+                not morphset.is_oed_headword()):
             continue
 
         for typeunit in morphset.types():
@@ -163,7 +162,7 @@ def _process_wordclass(entry, wordclass_set):
                     start,
                     end,
                     morphset.types()[0].form,
-                    ))
+                ))
 
     # Filter so that there's only one example of each form+pos
     return [local_list[0] for local_list in forms.values()]

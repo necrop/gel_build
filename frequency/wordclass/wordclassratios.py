@@ -16,6 +16,8 @@ CORPUS_MANAGERS = {
     'oeclempos': OecLemposProbability(),
 }
 FREQUENCY_PREDICTOR = FrequencyPredictor()
+AWKWARD_CLASSES = {'VBZ', 'VBD', 'VBN', 'VBG', 'NNS', 'JJR', 'JJS',
+                   'RBR', 'RBS'}
 
 
 class WordclassRatios(object):
@@ -58,19 +60,18 @@ class WordclassRatios(object):
         """
         Derive the appropriate set of ratios for each decade.
         """
+        ratios = {}
         # Shortcut in case of just a single wordclass
-        if len(self.wordclass_model.fullset()) < 2:
-            ratios = dict()
+        if len(self.wordclass_model.full_set_of_wordclasses()) < 2:
             for w in wordclasses:
                 ratios[w] = 1.0 / len(wordclasses)
             for lex_item in self.lex_items:
                 lex_item.wordclass_method = 'singleton'
             return ratios
         else:
-            ratios = dict()
             if self.calibrator is not None:
-                j = self.calibrator.calibrate(year)
-                self.wordclass_model.inject_calibration(j)
+                calibrated_value = self.calibrator.calibrate(year)
+                self.wordclass_model.inject_calibration(calibrated_value)
             for w in wordclasses:
                 ratios[w] = self.wordclass_model.pos_ratio(w)
             if not 'NP' in ratios and self.wordclass_model.pos_ratio('NP') > 0:
@@ -108,12 +109,12 @@ class WordclassRatios(object):
                         ratio_set[pos] = 1.0
                     method_type = 'singleton'
                 elif (self.oec_pos and
-                      self.oec_pos.covers(base.fullset())):
+                        self.oec_pos.covers(base.full_set_of_wordclasses())):
                     for pos in base.model().keys():
                         ratio_set[pos] = self.oec_pos.ratio(pos)
                     method_type = 'oec'
                 elif (self.bnc_pos and
-                      self.bnc_pos.covers(base.fullset())):
+                        self.bnc_pos.covers(base.full_set_of_wordclasses())):
                     for pos in base.model().keys():
                         ratio_set[pos] = self.bnc_pos.ratio(pos)
                     method_type = 'bnc'
@@ -122,19 +123,20 @@ class WordclassRatios(object):
                         ratio_set[pos] = item.predicted_frequency()
                     method_type = 'predictions'
                     if ('NP' in base.model() and
-                        'NN' in base.model() and
-                        len(base.model().keys()) == 2):
+                            'NN' in base.model() and
+                            len(base.model().keys()) == 2):
                         ratio_set = self._np_adjuster(base.model(), ratio_set)
                 ratio_set = adjust_to_unity(ratio_set)
                 base.set_ratios(ratio_set, method_type)
 
     def _set_base_ratios(self):
         """
-        Set ratios for base wordclasses within each group
+        Set ratios for base wordclasses within each group.
+        Based on measured or predicted frequencies.
         """
         for group in self.wordclass_model.model().values():
             method_type = None
-            ratio_set = dict()
+            ratio_set = {}
 
             # No need to bother when there is only one wordclass (singleton)
             if len(group.model()) == 1:
@@ -151,7 +153,7 @@ class WordclassRatios(object):
                     probability_set = self.bnc_pos
                 if (not method_type and
                         probability_set and
-                        probability_set.covers(group.baseset(), base=True)):
+                        probability_set.covers(group.base_set_of_wordclasses(), base=True)):
                     for wc in group.model().keys():
                         ratio_set[wc] = probability_set.base_ratios()[wc]
                     method_type = corpus
@@ -166,14 +168,14 @@ class WordclassRatios(object):
                     probability_set = self.bnc_pos
                 if (not method_type and
                         probability_set and
-                        probability_set.almost_covers(group.baseset())):
-                    missing = probability_set.almost_covers(group.baseset())
+                        probability_set.almost_covers(group.base_set_of_wordclasses())):
+                    missing = probability_set.almost_covers(group.base_set_of_wordclasses())
                     est = self._estimate_missing(missing=missing,
                                                  corpus=corpus,
                                                  model=group.model())
                     if est is not None:
                         # Set the ratios of the wordclasses that *are* covered
-                        for wc in group.baseset():
+                        for wc in group.base_set_of_wordclasses():
                             if wc != missing:
                                 ratio_set[wc] = probability_set.base_ratios()[wc]
                         # Use estimate as the ratio of the missing wordclass
@@ -185,7 +187,7 @@ class WordclassRatios(object):
             if (not method_type and
                     self.oec_lempos and
                     not group.is_verblike() and
-                    self.oec_lempos.covers(group.baseset(), base=True)):
+                    self.oec_lempos.covers(group.base_set_of_wordclasses(), base=True)):
                 for wc in group.model().values():
                     ratio_set[wc.wordclass] =\
                         self.oec_lempos.sum_subcategories(list(wc.model().keys()))
@@ -197,15 +199,15 @@ class WordclassRatios(object):
             if (not method_type and
                     self.oec_lempos and
                     not group.is_verblike() and
-                    self.oec_lempos.almost_covers(group.baseset())):
-                missing = self.oec_lempos.almost_covers(group.baseset())
+                    self.oec_lempos.almost_covers(group.base_set_of_wordclasses())):
+                missing = self.oec_lempos.almost_covers(group.base_set_of_wordclasses())
                 est = self._estimate_missing(missing=missing,
                                              trace=False,
                                              corpus='oec',
                                              model=group.model())
                 if est:
                     # Set the ratios of the wordclasses that *are* covered
-                    for wc in group.baseset():
+                    for wc in group.base_set_of_wordclasses():
                         if wc != missing:
                             ratio_set[wc] = self.oec_lempos.base_ratios()[wc]
                     # Use estimate as the ratio of the missing wordclass
@@ -216,13 +218,18 @@ class WordclassRatios(object):
             if not method_type:
                 for wc, item in group.model().items():
                     ratio_set[wc] = item.predicted_frequency()
+                ratio_set = _crosscheck(ratio_set, group.model())
                 method_type = 'predictions'
+
             ratio_set = adjust_to_unity(ratio_set)
             group.set_ratios(ratio_set, method_type)
 
     def _set_group_ratios(self):
         """
         Set ratios for main groups
+        Based on measured or predicted frequencies.
+
+        Groups are either 'core' (NN + VB + JJ) or 'other' (everything else)
         """
         if len(self.wordclass_model.model()) == 1:
             ratio_set = {grp: 1.0 for grp in self.wordclass_model.model().keys()}
@@ -234,15 +241,17 @@ class WordclassRatios(object):
             method_type = 'bnc'
         elif (self.oec_lempos and
                 self.wordclass_model.groupset() == self.oec_lempos.groupset() and
-                self.oec_lempos.covers(self.wordclass_model.baseset(), base=True) and
-                self.oec_lempos.sum_ratios(self.wordclass_model.baseset()) > 0.9):
+                self.oec_lempos.covers(self.wordclass_model.base_set_of_wordclasses(), base=True) and
+                self.oec_lempos.sum_ratios(self.wordclass_model.base_set_of_wordclasses()) > 0.9):
             ratio_set = {grp: self.oec_lempos.group_ratios()[grp]
                          for grp in self.wordclass_model.groupset()}
             method_type = 'oeclempos'
         else:
             ratio_set = {pos: item.predicted_frequency() for pos, item
                          in self.wordclass_model.model().items()}
+            ratio_set = _crosscheck(ratio_set, self.wordclass_model.model())
             method_type = 'predictions'
+
         ratio_set = adjust_to_unity(ratio_set)
         self.wordclass_model.set_ratios(ratio_set, method_type)
 
@@ -343,9 +352,9 @@ class Calibrator(object):
         self.ngram_manager = ngram_manager
 
     def is_viable(self):
-        if (len(self.wordclass_model.baseset()) > 1 and
-                self.ngram_manager.covers(self.wordclass_model.baseset()) and
-                self.ngram_manager.coverage(self.wordclass_model.baseset(), decade=2000) > 0.7 and
+        if (len(self.wordclass_model.base_set_of_wordclasses()) > 1 and
+                self.ngram_manager.covers(self.wordclass_model.base_set_of_wordclasses()) and
+                self.ngram_manager.coverage(self.wordclass_model.base_set_of_wordclasses(), decade=2000) > 0.7 and
                 not self.wordclass_model.is_verblike()):
             self.set_baseline()
             if self.reference_metaratio < 20:
@@ -397,7 +406,7 @@ class Calibrator(object):
 
     def _list_ngram_ratios(self):
         ratios = list()
-        for base in self.wordclass_model.baseset():
+        for base in self.wordclass_model.base_set_of_wordclasses():
             ratios.append((base, self.ngram_manager.find_ngram(base).ratio))
         ratios.sort(key=lambda a: a[1], reverse=True)
         return ratios
@@ -441,9 +450,89 @@ def _find_oec(lex_items):
 
 
 def _metaratio(ratio_tuple):
+    """
+    Return the ratio of a tuple of two ratios
+    """
     ratio1, ratio2 = ratio_tuple
     if ratio1 < 0.0001:
         ratio1 = 0.0001
     if ratio2 < 0.0001:
         ratio2 = 0.0001
     return ratio1 / ratio2
+
+
+def _crosscheck(ratios, model_dict):
+    """
+    Check that the predicted ratios are not completely out of line with
+    the naive ratios we'd derive by looking at the weighted size of the
+    blocks being compared.
+
+    If they *are* out of line, we switch to a more naive approach, which
+    just predicts frequency in proportion to weighted size.
+
+    This is only done in cases where there's a significant difference
+    in size, or where one of the sizes is very small (c.2 quotations);
+    this is the area where the reliability of predicted frequency
+    tends to break down.
+    """
+    trace = False
+
+    # Bug out if there's only a single category
+    if len(ratios) == 1:
+        return ratios
+
+    # Bug out if there are awkward wordclasses involved - since,
+    # for example, we don't necessarily expect VBZ to be more frequent
+    # than NNS just because it's in a larger entry.
+    wordclasses = set()
+    for group in model_dict.values():
+        [wordclasses.add(wc) for wc in group.full_set_of_wordclasses()]
+    if wordclasses.intersection(AWKWARD_CLASSES):
+        return ratios
+
+    ratios = adjust_to_unity(ratios)
+    sizes = [(pos, item.summed_weighted_size())
+             for pos, item in model_dict.items()]
+    sizes.sort(key=lambda i: i[1], reverse=True)
+    try:
+        sizes_ratio = sizes[0][1] / sizes[1][1]
+    except ZeroDivisionError:
+        sizes_ratio = sizes[0][1] / 0.5
+    largest = sizes[0][0]
+    next_largest = sizes[1][0]
+
+    # Bug out if the size ratio of largest to next largest is not big
+    # enough to be indicative
+    if sizes_ratio > 3:
+        pass
+    elif sizes[1][1] < 2 and sizes_ratio > 2:
+        pass
+    else:
+        return ratios
+
+    # Bug out if predicted ratios are already different enough
+    if ratios[largest] / ratios[next_largest] > sizes_ratio:
+        return ratios
+
+    # Switch to naive ratios, based on weighted size rather than
+    #  predicted frequency
+    naive_ratios = {pos: item.summed_weighted_size() for pos, item
+                    in model_dict.items()}
+    naive_ratios = adjust_to_unity(naive_ratios)
+
+    if trace:
+        print('------------------------------------------------------')
+        try:
+            print(list(model_dict.values())[0].form())
+        except IndexError:
+            print('UNKNOWN')
+        for group in model_dict.values():
+            print(group.full_set_of_wordclasses())
+        print('-------------------------------------------------------')
+        print(sizes)
+        print(ratios)
+        print('---->')
+        print(naive_ratios)
+
+    ratios = naive_ratios
+    return ratios

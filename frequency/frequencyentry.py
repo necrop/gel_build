@@ -113,11 +113,12 @@ class LexItem(object):
     def wordclass(self):
         return self.attributes['wordclass']
 
-    def size(self, date=2000):
-        return _find_weighted_size(self.xrid,
-                                   self.xnode,
-                                   wordclass=self.wordclass,
-                                   date=date)
+    def size(self, date=2000, mode='weighted'):
+        return _find_size(self.xrid,
+                          self.xnode,
+                          wordclass=self.wordclass,
+                          date=date,
+                          mode=mode)
 
     def frequency_table(self):
         try:
@@ -165,16 +166,16 @@ class LexItem(object):
             self._predictions[date] = FREQUENCY_PREDICTOR.predict(
                 size=self.size(date=date),
                 wordclass=self.wordclass,
-                )
+            )
         return self._predictions[date]
 
 
-def _find_weighted_size(id, eid, wordclass='NN', date=2000):
+def _find_size(id, eid, wordclass='NN', date=2000, mode='weighted'):
     size = None
     if id and eid:
         size = WEIGHTED_SIZE_MANAGER.find_size(id=id,
                                                eid=eid,
-                                               type='weighted',
+                                               type=mode,
                                                date=date)
     if not size:
         if wordclass == 'NP':

@@ -25,10 +25,10 @@ EntryData = namedtuple('EntryData', ['entry_id', 'node_id', 'wordclass',
 
 def build_weighted_size_index():
     for letter in string.ascii_uppercase:
-        iterator = EntryIterator(dictType='oed',
-                                 fileFilter='oed_%s.xml' % letter,
+        iterator = EntryIterator(dict_type='oed',
+                                 file_filter='oed_%s.xml' % letter,
                                  verbosity='low',
-                                 fixLigatures=True)
+                                 fix_ligatures=True)
 
         entries = []
         for entry in iterator.iterate():
@@ -75,10 +75,12 @@ def build_weighted_size_index():
             sizes = [(d, entry.weighted_size(revised=entry.is_revised,
                      currentYear=d)) for d in DATES]
             sizes = [(d, round(n, 2)) for d, n in sizes]
+            num_quotations = entry.num_quotations(force_recount=True,
+                                                  include_derivatives=False)
             entry_data = EntryData(int(entry.id),
                                    0,
                                    entry_wordclass,
-                                   entry.num_quotations(force_recount=True),
+                                   num_quotations,
                                    sizes,
                                    entry.date().start,
                                    entry.is_revised,
@@ -190,7 +192,8 @@ def _moving_average(entry_id, node_id):
 
 def _adjust_block_sizes(blocks, entry):
     if entry.num_quotations <= sum([b.num_quotations for b in blocks]) + 2:
-        # Don't change anything if the block sizes add up to the entry size.
+        # Don't change anything if the block sizes add up (more or less)
+        #  to the entry size.
         return blocks
     else:
         # Make adjustments if the entry size is more than the sum of the
@@ -208,7 +211,7 @@ def _adjust_block_sizes(blocks, entry):
         # Then we we do it for each row in the weighted size list
         #  (the .sizes attribute)
         # Results go into buckets in the weighted_adjusted list - one
-        #  buckets for each block. The buckets are homologous with the
+        #  bucket for each block. The buckets are homologous with the
         #  original .sizes list, so can then be used as a drop-in
         #  replacement.
         weighted_adjusted = [list() for _ in blocks]

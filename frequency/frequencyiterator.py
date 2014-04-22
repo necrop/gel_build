@@ -46,7 +46,7 @@ class FrequencyIterator(object):
                          os.listdir(os.path.join(self.in_dir, letter))
                          if f.endswith('.xml')]
 
-                for filepath in files:
+                for filepath in sorted(files):
                     doc = etree.parse(filepath, parser)
                     for lem_node in doc.findall('lemma'):
                         entry = FrequencyEntry(lem_node)
@@ -57,9 +57,7 @@ class FrequencyIterator(object):
         if self.out_dir:
             basename = os.path.basename(filepath)
             with open(os.path.join(self.subdir, basename), 'w') as filehandle:
-                filehandle.write(etree.tostring(doc,
-                                                pretty_print=True,
-                                                encoding='unicode'))
+                filehandle.write(etree.tounicode(doc, pretty_print=True))
 
     def clear_dir(self):
         if not os.path.isdir(self.subdir):

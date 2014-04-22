@@ -160,9 +160,7 @@ class GenerateBase(object):
 
     def writebuffer(self):
         with open(self.next_filename(), 'w') as filehandle:
-            filehandle.write(etree.tostring(self.root,
-                                            pretty_print=True,
-                                            encoding='unicode'))
+            filehandle.write(etree.tounicode(self.root, pretty_print=True))
 
     def next_filename(self):
         self.filecount += 1
@@ -249,6 +247,12 @@ class GelBlock(object):
         return wordclass_manager
 
     def construct_entry_node(self):
+        oed_headwords = set([hw.lemma for hw in self.entry.headwords()])
+
+        #------------------------------------------
+        # Create the entry node and header stuff
+        #------------------------------------------
+
         entry_node = etree.Element('e',
                                    oedId=str(self.block.id),
                                    oedLexid=str(self.block.node_id()),
@@ -269,13 +273,20 @@ class GelBlock(object):
         for l in self.lemma_fragments():
             entry_node.append(l)
 
+        #------------------------------------------
+        # Process each wordclass
+        #------------------------------------------
+
         for wordclass_manager in self.wordclasses:
             if not wordclass_manager.penn:
                 continue
             self.wordclass = wordclass_manager.penn
 
+            #------------------------------------------
             # Compute the set of variants appropriate to this lemma
             # in this wordclass
+            #------------------------------------------
+
             if self.type == 's1':
                 primary_id = self.entry.id
                 hint_ids = self.entry.etymology().etyma_targets()
@@ -284,7 +295,7 @@ class GelBlock(object):
                 primary_id = None
                 hint_ids = [self.entry.id, ]
                 etyma = []
-            headwords = [l['lemma'] for l in self.entry_lemmas()]
+            headwords = [l.lemma for l in self.entry_lemmas()]
             varcomputer = VariantsComputer(lemma=self.block.lemma,
                                            wordclass=self.wordclass,
                                            headwords=headwords,
@@ -294,6 +305,10 @@ class GelBlock(object):
             varcomputer.set_etyma(etyma)
             varcomputer.compute()
             local_lemma_manager = varcomputer.lemma_manager
+
+            #------------------------------------------
+            # Create the XML node for this wordclass
+            #------------------------------------------
 
             wordclass_node = etree.Element('wordclassSet')
             wordclass_node.append(wordclass_manager.to_xml())
@@ -310,6 +325,8 @@ class GelBlock(object):
                         morphset_node.set('irregular', 'true')
                     if variant_form.regional:
                         morphset_node.set('regional', 'true')
+                    if variant_form_fixed in oed_headwords:
+                        morphset_node.set('oedHeadword', 'true')
 
                     # Date node for the variant form
                     vardate_node = _variant_date_node(variant_form.date,
@@ -332,6 +349,7 @@ class GelBlock(object):
             wordclass_node.append(self.build_definition_node())
             wordclass_node.append(self.build_resource_node())
 
+            # Append the wordclass node to the main entry node
             entry_node.append(wordclass_node)
         return entry_node
 
@@ -438,46 +456,44 @@ class GelBlock(object):
             return LINK_MANAGERS[dictname].find_definition(
                 self.linked_entry_id(dictname),
                 wordclass=self.wordclass,
-                )
+            )
         else:
             return None
 
     def entry_lemmas(self):
-        lemmas = []
-        if self.ode_lemmas('uk') and self.ode_lemmas('us'):
-            for locale in ('uk', 'us'):
-                lemmas.append({
-                    'lemma': self.ode_lemmas(locale),
-                    'locale': locale,
-                    'source': 'ode'})
-        elif self.ode_lemmas('default'):
-            lemmas.append({
-                'lemma': self.ode_lemmas('default'),
-                'locale': None,
-                'source': 'ode'})
-        elif self.noad_lemmas('default'):
-            lemmas.append({
-                'lemma': self.noad_lemmas('default'),
-                'locale': None,
-                'source': 'noad'})
-        else:
-            lemma_us = SPELLING_CONVERTER.us_spelling(self.block.lemma)
-            if (lemma_us != self.block.lemma and
-                self.block.date().projected_end() >= US_VARIANT_MINIMUM):
-                lemmas.append({
-                    'lemma': unswung(self.block.lemma),
-                    'locale': 'uk',
-                    'source': self.src_type})
-                lemmas.append({
-                    'lemma': unswung(lemma_us),
-                    'locale': 'us',
-                    'source': self.src_type})
+        try:
+            return self._entry_lemmas
+        except AttributeError:
+            lemmas = []
+            if self.ode_lemmas('uk') and self.ode_lemmas('us'):
+                for locale in ('uk', 'us'):
+                    lemmas.append(GelLemma(self.ode_lemmas(locale),
+                                           locale,
+                                           'ode'))
+            elif self.ode_lemmas('default'):
+                lemmas.append(GelLemma(self.ode_lemmas('default'),
+                                       None,
+                                       'ode'))
+            elif self.noad_lemmas('default'):
+                lemmas.append(GelLemma(self.noad_lemmas('default'),
+                                       None,
+                                       'noad'))
             else:
-                lemmas.append({
-                    'lemma': unswung(self.block.lemma),
-                    'locale': None,
-                    'source': self.src_type})
-        return lemmas
+                lemma_us = SPELLING_CONVERTER.us_spelling(self.block.lemma)
+                if (lemma_us != self.block.lemma and
+                        self.block.date().projected_end() >= US_VARIANT_MINIMUM):
+                    lemmas.append(GelLemma(unswung(self.block.lemma),
+                                           'uk',
+                                           self.src_type))
+                    lemmas.append(GelLemma(unswung(lemma_us),
+                                           'us',
+                                           self.src_type))
+                else:
+                    lemmas.append(GelLemma(unswung(self.block.lemma),
+                                           None,
+                                           self.src_type))
+            self._entry_lemmas = lemmas
+            return self._entry_lemmas
 
     def ode_lemmas(self, locale):
         return self.odo_lemmas('ode', locale)
@@ -490,19 +506,28 @@ class GelBlock(object):
             self._odo_lemmas
         except AttributeError:
             self._odo_lemmas = _compile_odo_lemmas(
-                                    ode_link=self.linked_entry_id('ode'),
-                                    noad_link=self.linked_entry_id('noad'))
+                ode_link=self.linked_entry_id('ode'),
+                noad_link=self.linked_entry_id('noad')
+            )
         return self._odo_lemmas[dictname][locale]
 
     def lemma_fragments(self):
-        fragments = []
-        for j in self.entry_lemmas():
-            fragment = etree.Element('lemma', src=j['source'])
-            fragment.text = j['lemma']
-            if j['locale'] is not None:
-                fragment.set('locale', j['locale'])
-            fragments.append(fragment)
-        return fragments
+        return [l.to_xml() for l in self.entry_lemmas()]
+
+
+class GelLemma:
+
+    def __init__(self, lemma, locale, source):
+        self.lemma = lemma
+        self.locale = locale
+        self.source = source
+
+    def to_xml(self):
+        node = etree.Element('lemma', src=self.source)
+        node.text = self.lemma
+        if self.locale:
+            node.set('locale', self.locale)
+        return node
 
 
 def split_closed_compound(lemma, referent_lemma):

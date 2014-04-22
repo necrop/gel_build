@@ -29,9 +29,9 @@ def adjust_to_unity(ratios):
     """
     total = sum(ratios.values())
     adjusted = dict()
-    for wordclass, r in ratios.items():
+    for wordclass, value in ratios.items():
         if total > 0:
-            adjusted[wordclass] = (1.0 / total) * r
+            adjusted[wordclass] = (1.0 / total) * value
         else:
             adjusted[wordclass] = 1.0 / len(ratios)
     return adjusted

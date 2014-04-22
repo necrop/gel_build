@@ -25,8 +25,9 @@ def calculate_frequency(in_dir, out_dir):
         _apportion_scores(entry)
         for item in entry.lex_items:
             _compute_average_frequencies(item)
-            # Add the entry weighted size to each lex_item
-            item.node.set('size', '%0.3g' % item.size())
+            # Add the entry raw size and weighted size to each lex_item
+            item.node.set('size', '%0.3g' % item.size(mode='weighted'))
+            item.node.set('rawSize', '%d' % item.size(mode='actual'))
             # Add a full frequency table to each lex_item in the entry
             data = {p: {'frequency': f, 'estimate': item.estimated[p]}
                     for p, f in item.average_frequency.items()}
@@ -45,7 +46,7 @@ def _apportion_scores(entry):
             lex_items=entry.lex_items,
             ngram=entry.ngram,
             tagged_ngrams=entry.tagged_ngrams,
-            )
+        )
 
         for decade in sorted(entry.ngram.decades):
             if decade < 1750:
@@ -78,7 +79,7 @@ def _apportion_scores(entry):
                         homographs=homographs,
                         frequency=total_frequency,
                         year=decade,
-                        )
+                    )
                     homograph_scorer.estimate()
 
 
@@ -88,8 +89,8 @@ def _compute_average_frequencies(lex_item):
     calculating the average frequency across each period specified
     in PERIODS - i.e. for each decade.
     """
-    lex_item.average_frequency = dict()
-    lex_item.estimated = dict()
+    lex_item.average_frequency = {}
+    lex_item.estimated = {}
     for period, year_range in sorted(PERIODS.items()):
         start, end = year_range
         # How many decades in the period? 1850-1900 and 1850-1899

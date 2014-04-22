@@ -25,15 +25,21 @@ class Model(object):
     def model(self):
         return self._model
 
-    def fullset(self):
-        fset = set()
-        for subcat in self.model().values():
-            for wordclass in subcat.fullset():
-                fset.add(wordclass)
-        return fset
+    def form(self):
+        try:
+            return self.lex_items()[0].form
+        except IndexError:
+            return '[UNKNOWN]'
 
-    def baseset(self):
-        return set([wordclass_base(wc) for wc in self.fullset()])
+    def full_set_of_wordclasses(self):
+        fullset = set()
+        for subcat in self.model().values():
+            [fullset.add(wc) for wc in subcat.full_set_of_wordclasses()]
+        return fullset
+
+    def base_set_of_wordclasses(self):
+        return set([wordclass_base(wc)
+                    for wc in self.full_set_of_wordclasses()])
 
     def lex_items(self):
         """
@@ -45,6 +51,12 @@ class Model(object):
             items.extend(subcat.lex_items())
         return items
 
+    def summed_weighted_size(self):
+        return sum([l.size(mode='weighted') for l in self.lex_items()])
+
+    def summed_actual_size(self):
+        return sum([l.size(mode='actual') for l in self.lex_items()])
+
     def predicted_frequency(self):
         return sum([j.predicted_frequency()
                     for j in self.model().values()])
@@ -52,19 +64,19 @@ class Model(object):
     def set_ratios(self, ratio_set, type):
         for wordclass, val in ratio_set.items():
             self.model()[wordclass].ratio = val
-            self.model()[wordclass].rtype = type
-        self.rtype = type
+            self.model()[wordclass]._ratio_type = type
+        self._ratio_type = type
 
     def ratio_type(self):
         try:
-            return self.rtype
+            return self._ratio_type
         except AttributeError:
             return 'not set'
 
     def is_verblike(self):
-        if (set(('VBG', 'JJ')).issubset(self.fullset()) or
-                set(('VBG', 'NN')).issubset(self.fullset()) or
-                set(('VBN', 'JJ')).issubset(self.fullset())):
+        if ({'VBG', 'JJ'}.issubset(self.full_set_of_wordclasses()) or
+                {'VBG', 'NN'}.issubset(self.full_set_of_wordclasses()) or
+                {'VBN', 'JJ'}.issubset(self.full_set_of_wordclasses())):
             return True
         else:
             return False
@@ -97,9 +109,9 @@ class HierarchicalModel(Model):
         """
         Check if a dummy "NP" wordclass needs to be added
         """
-        if (not 'NP' in self.fullset() and
-            self.wordform.lower() != self.wordform and
-            is_proper_name(self.wordform)):
+        if (not 'NP' in self.full_set_of_wordclasses() and
+                self.wordform.lower() != self.wordform and
+                is_proper_name(self.wordform)):
             group_type = wordclass_group('NP')
             base_class = wordclass_base('NP')
             if not group_type in self.model():
@@ -254,7 +266,7 @@ class Group(Model):
     def __init__(self, type):
         self.type = type
         self._model = dict()
-        self.ratio = 1.0 # default placeholder
+        self.ratio = 1.0  # default placeholder
 
     def add(self, lex_item):
         base = wordclass_base(lex_item.wordclass)
@@ -278,7 +290,7 @@ class Base(Model):
     def __init__(self, wordclass):
         self.wordclass = wordclass
         self._model = dict()
-        self.ratio = 1.0 # default placeholder
+        self.ratio = 1.0  # default placeholder
 
     def add(self, lex_item):
         if not lex_item.wordclass in self.model():
@@ -308,11 +320,11 @@ class PartOfSpeech(object):
     def lex_items(self):
         return self.items
 
-    def fullset(self):
-        return set((self.wordclass,))
+    def full_set_of_wordclasses(self):
+        return {self.wordclass, }
 
-    def baseset(self):
-        return set((self.baseclass,))
+    def base_set_of_wprdclasses(self):
+        return {self.baseclass, }
 
     def predicted_frequency(self):
         try:
@@ -333,7 +345,7 @@ class PartOfSpeech(object):
 
     def ratio_type(self):
         try:
-            return self.rtype
+            return self._ratio_type
         except AttributeError:
             return 'not set'
 
