@@ -14,7 +14,7 @@ from lex.gel.fileiterator import FileIterator
 MINIMUM_END_DATE = 1800
 FormData = namedtuple('FormData', ['form', 'sort', 'wordclass_id',
                                    'type_id', 'xrid', 'xnode', 'wordclass',
-                                   'start', 'end', 'baseform'])
+                                   'start', 'end', 'baseform', 'is_variant'])
 
 
 class LemmaLister(object):
@@ -66,6 +66,8 @@ class LemmaLister(object):
                             instance_node.set('xrid', item.xrid)
                         if item.xnode:
                             instance_node.set('xnode', item.xnode)
+                        if item.is_variant:
+                            instance_node.set('variant', 'true')
                         lex_node.append(instance_node)
                     entry.append(lex_node)
                     self.doc.append(entry)
@@ -138,6 +140,11 @@ def _process_wordclass(entry, wordclass_set):
                 not morphset.is_oed_headword()):
             continue
 
+        if morphset.sort in permissible_forms:
+            is_variant = False
+        else:
+            is_variant = True
+
         for typeunit in morphset.types():
             if typeunit.sort and not typeunit.sort in omit:
                 if not morphset.date():
@@ -162,6 +169,7 @@ def _process_wordclass(entry, wordclass_set):
                     start,
                     end,
                     morphset.types()[0].form,
+                    is_variant,
                 ))
 
     # Filter so that there's only one example of each form+pos

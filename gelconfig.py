@@ -25,10 +25,10 @@ PIPELINE = (
     ('frequencyCompileNgrams', 0),
     ('frequencyCheckGaps', 0),
     ('frequencyRecompilePredictors', 0),
-    ('frequencyComputeScores', 0),
+    ('frequencyComputeScores', 1),
     ('insertFrequency', 0),
-    ('alphabetizeOutput', 1),
-    ('indexOutput', 1),
+    ('alphabetizeOutput', 0),
+    ('indexOutput', 0),
 )
 
 

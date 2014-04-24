@@ -113,12 +113,20 @@ class LexItem(object):
     def wordclass(self):
         return self.attributes['wordclass']
 
+    @property
+    def is_variant(self):
+        return bool(self.attributes.get('variant'))
+
     def size(self, date=2000, mode='weighted'):
-        return _find_size(self.xrid,
-                          self.xnode,
-                          wordclass=self.wordclass,
-                          date=date,
-                          mode=mode)
+        s = _find_size(self.xrid,
+                       self.xnode,
+                       wordclass=self.wordclass,
+                       date=date,
+                       mode=mode)
+        if self.is_variant:
+            return s / 3
+        else:
+            return s
 
     def frequency_table(self):
         try:

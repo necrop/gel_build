@@ -241,11 +241,12 @@ def _assign_excess(entry_size, block_sizes, wordclass_set):
         return block_sizes
 
     # If the two blocks are a NN and JJ, we share out the difference
-    #  in proportion to their original sizes. Otherwise, we just assign
-    #  the difference to the largest of the two blocks
+    #  in proportion to their original sizes...
     if wordclass_set == {'NN', 'JJ'}:
         new_sizes = [size + ((size / block_total) * difference)
                      for size in block_sizes]
+    # ...Otherwise, we just assign the difference to the largest of
+    #  the two blocks
     else:
         new_sizes = []
         for size in block_sizes:

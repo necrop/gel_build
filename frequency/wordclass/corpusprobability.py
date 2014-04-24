@@ -28,12 +28,11 @@ class BncPosProbability(object):
             return None
 
     def _load_data(self, filepath):
-        with (open(filepath)) as fh:
-            for line in fh:
-                ps = PosProbabilitySet(line)
-                if ps.fpm >= self.frequency_limit:
-                    BncPosProbability.words[ps.word] = ps
-            fh.close()
+        with open(filepath) as filehandle:
+            for line in filehandle:
+                probset = PosProbabilitySet(line)
+                if probset.fpm >= self.frequency_limit:
+                    BncPosProbability.words[probset.word] = probset
 
 
 class OecPosProbability(object):
@@ -57,12 +56,11 @@ class OecPosProbability(object):
             return None
 
     def _load_data(self, filepath):
-        with (open(filepath)) as fh:
-            for line in fh:
-                ps = PosProbabilitySet(line)
-                if ps.fpm >= self.frequency_limit:
-                    OecPosProbability.words[ps.word] = ps
-            fh.close()
+        with open(filepath) as filehandle:
+            for line in filehandle:
+                probset = PosProbabilitySet(line)
+                if probset.fpm >= self.frequency_limit:
+                    OecPosProbability.words[probset.word] = probset
 
 
 class OecLemposProbability(object):
@@ -85,11 +83,10 @@ class OecLemposProbability(object):
             return None
 
     def _load_data(self, filepath):
-        with (open(filepath, 'r')) as fh:
-            for line in fh:
-                ps = LemposProbabilitySet(line)
-                OecLemposProbability.lemmas[ps.word] = ps
-            fh.close()
+        with open(filepath) as filehandle:
+            for line in filehandle:
+                probset = LemposProbabilitySet(line)
+                OecLemposProbability.lemmas[probset.word] = probset
 
 
 class GenericProbabilitySet(object):

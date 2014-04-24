@@ -51,9 +51,12 @@ class WordclassRatios(object):
                                              kwargs.get('tagged_ngrams', []))
         self.wordclass_model = HierarchicalModel(self.lex_items,
                                                  self.wordform)
-        self.bnc_pos = CORPUS_MANAGERS['bnc'].find(self.wordform)
-        self.oec_pos = CORPUS_MANAGERS['oecpos'].find(self.wordform)
-        self.oec_lempos = _find_oec(self.lex_items)
+        self.corpus_probability_sets = {
+            'bnc': CORPUS_MANAGERS['bnc'].find(self.wordform),
+            'oec': CORPUS_MANAGERS['oecpos'].find(self.wordform),
+            'oec_lempos': _find_oec(self.lex_items),
+        }
+        self.calibrator = None
         self._set_ratios()
 
     def find_ratios(self, wordclasses, year):
@@ -62,14 +65,14 @@ class WordclassRatios(object):
         """
         ratios = {}
         # Shortcut in case of just a single wordclass
-        if len(self.wordclass_model.full_set_of_wordclasses()) < 2:
+        if len(self.wordclass_model.full_set_of_wordclasses()) <= 1:
             for w in wordclasses:
                 ratios[w] = 1.0 / len(wordclasses)
             for lex_item in self.lex_items:
                 lex_item.wordclass_method = 'singleton'
             return ratios
         else:
-            if self.calibrator is not None:
+            if self.calibrator:
                 calibrated_value = self.calibrator.calibrate(year)
                 self.wordclass_model.inject_calibration(calibrated_value)
             for w in wordclasses:
@@ -88,8 +91,6 @@ class WordclassRatios(object):
         calibrator = Calibrator(self.wordclass_model, self.ngram_manager)
         if calibrator.is_viable():
             self.calibrator = calibrator
-        else:
-            self.calibrator = None
 
     def _set_partofspeech_ratios(self):
         """
@@ -103,22 +104,24 @@ class WordclassRatios(object):
         """
         for group in self.wordclass_model.model().values():
             for base in group.model().values():
+                method_type = None
                 ratio_set = dict()
                 if len(base.model()) == 1:
                     for pos in base.model().keys():
                         ratio_set[pos] = 1.0
                     method_type = 'singleton'
-                elif (self.oec_pos and
-                        self.oec_pos.covers(base.full_set_of_wordclasses())):
-                    for pos in base.model().keys():
-                        ratio_set[pos] = self.oec_pos.ratio(pos)
-                    method_type = 'oec'
-                elif (self.bnc_pos and
-                        self.bnc_pos.covers(base.full_set_of_wordclasses())):
-                    for pos in base.model().keys():
-                        ratio_set[pos] = self.bnc_pos.ratio(pos)
-                    method_type = 'bnc'
-                else:
+
+                if not method_type:
+                    for corpus in ('oec', 'bnc'):
+                        probability_set = self.corpus_probability_sets[corpus]
+                        if (probability_set and
+                                probability_set.covers(base.full_set_of_wordclasses())):
+                            for pos in base.model().keys():
+                                ratio_set[pos] = probability_set.ratio(pos)
+                            method_type = corpus
+                            break
+
+                if not method_type:
                     for pos, item in base.model().items():
                         ratio_set[pos] = item.predicted_frequency()
                     method_type = 'predictions'
@@ -126,6 +129,7 @@ class WordclassRatios(object):
                             'NN' in base.model() and
                             len(base.model().keys()) == 2):
                         ratio_set = self._np_adjuster(base.model(), ratio_set)
+
                 ratio_set = adjust_to_unity(ratio_set)
                 base.set_ratios(ratio_set, method_type)
 
@@ -144,75 +148,74 @@ class WordclassRatios(object):
                     ratio_set[wc] = 1.0
                 method_type = 'singleton'
 
-            # Take ratios from OEC/BNC pos, if it's available and covers
-            #  the right set of wordclasses
-            for corpus in ('oec', 'bnc'):
-                if corpus == 'oec':
-                    probability_set = self.oec_pos
-                elif corpus == 'bnc':
-                    probability_set = self.bnc_pos
-                if (not method_type and
-                        probability_set and
-                        probability_set.covers(group.base_set_of_wordclasses(), base=True)):
-                    for wc in group.model().keys():
-                        ratio_set[wc] = probability_set.base_ratios()[wc]
-                    method_type = corpus
+            if not method_type:
+                # Take ratios from OEC/BNC pos, if it's available and covers
+                #  the right set of wordclasses
+                for corpus in ('bnc', 'oec'):
+                    probability_set = self.corpus_probability_sets[corpus]
+                    if (probability_set and
+                            probability_set.covers(group.base_set_of_wordclasses(), base=True)):
+                        for wc in group.model().keys():
+                            ratio_set[wc] = probability_set.base_ratios()[wc]
+                        method_type = corpus
+                        break
 
-            # Take ratios from OEC/BNC pos, if it's available and covers
-            #  *nearly* the right set of wordclasses. If a minor wordclass
-            #  is not covered, use an estimate for this.
-            for corpus in ('oec', 'bnc'):
-                if corpus == 'oec':
-                    probability_set = self.oec_pos
-                elif corpus == 'bnc':
-                    probability_set = self.bnc_pos
-                if (not method_type and
-                        probability_set and
-                        probability_set.almost_covers(group.base_set_of_wordclasses())):
+            if not method_type:
+                # Take ratios from OEC/BNC pos, if it's available and covers
+                #  *nearly* the right set of wordclasses. If a minor wordclass
+                #  is not covered, use an estimate for this.
+                for corpus in ('bnc', 'oec'):
+                    probability_set = self.corpus_probability_sets[corpus]
+                    if (probability_set and
+                            probability_set.almost_covers(group.base_set_of_wordclasses())):
+                        missing = probability_set.almost_covers(group.base_set_of_wordclasses())
+                        est = self._estimate_missing(missing=missing,
+                                                     corpus=corpus,
+                                                     model=group.model())
+                        if est is not None:
+                            # Set the ratios of the wordclasses that *are* covered
+                            for wc in group.base_set_of_wordclasses():
+                                if wc != missing:
+                                    ratio_set[wc] = probability_set.base_ratios()[wc]
+                            # Use estimate as the ratio of the missing wordclass
+                            ratio_set[missing] = est
+                            method_type = corpus
+                            break
+
+            if not method_type:
+                # Take ratios from OEC lempos, if it's available and covers
+                #  the right set of wordclasses
+                probability_set = self.corpus_probability_sets['oec_lempos']
+                if (probability_set and
+                        probability_set.covers(group.base_set_of_wordclasses(), base=True) and
+                        not group.is_verblike()):
+                    for wc in group.model().values():
+                        ratio_set[wc.wordclass] =\
+                            probability_set.sum_subcategories(list(wc.model().keys()))
+                    method_type = 'oeclempos'
+
+            if not method_type:
+                # Take ratios from OEC lempos, if it's available and covers
+                #  *nearly* the right set of wordclasses. If a minor wordclass
+                #  is not covered, use an estimate for this.
+                probability_set = self.corpus_probability_sets['oec_lempos']
+                if (probability_set and
+                        probability_set.almost_covers(group.base_set_of_wordclasses()) and
+                        not group.is_verblike()):
+
                     missing = probability_set.almost_covers(group.base_set_of_wordclasses())
                     est = self._estimate_missing(missing=missing,
-                                                 corpus=corpus,
+                                                 trace=False,
+                                                 corpus='oec',
                                                  model=group.model())
-                    if est is not None:
+                    if est:
                         # Set the ratios of the wordclasses that *are* covered
                         for wc in group.base_set_of_wordclasses():
                             if wc != missing:
                                 ratio_set[wc] = probability_set.base_ratios()[wc]
                         # Use estimate as the ratio of the missing wordclass
                         ratio_set[missing] = est
-                        method_type = corpus
-
-            # Take ratios from OEC lempos, if it's available and covers
-            #  the right set of wordclasses
-            if (not method_type and
-                    self.oec_lempos and
-                    not group.is_verblike() and
-                    self.oec_lempos.covers(group.base_set_of_wordclasses(), base=True)):
-                for wc in group.model().values():
-                    ratio_set[wc.wordclass] =\
-                        self.oec_lempos.sum_subcategories(list(wc.model().keys()))
-                method_type = 'oeclempos'
-
-            # Take ratios from OEC lempos, if it's available and covers
-            #  *nearly* the right set of wordclasses. If a minor wordclass
-            #  is not covered, use an estimate for this.
-            if (not method_type and
-                    self.oec_lempos and
-                    not group.is_verblike() and
-                    self.oec_lempos.almost_covers(group.base_set_of_wordclasses())):
-                missing = self.oec_lempos.almost_covers(group.base_set_of_wordclasses())
-                est = self._estimate_missing(missing=missing,
-                                             trace=False,
-                                             corpus='oec',
-                                             model=group.model())
-                if est:
-                    # Set the ratios of the wordclasses that *are* covered
-                    for wc in group.base_set_of_wordclasses():
-                        if wc != missing:
-                            ratio_set[wc] = self.oec_lempos.base_ratios()[wc]
-                    # Use estimate as the ratio of the missing wordclass
-                    ratio_set[missing] = est
-                    method_type = 'oeclempos'
+                        method_type = 'oeclempos'
 
             # Fall back on predictions
             if not method_type:
@@ -231,22 +234,30 @@ class WordclassRatios(object):
 
         Groups are either 'core' (NN + VB + JJ) or 'other' (everything else)
         """
+        method_type = None
         if len(self.wordclass_model.model()) == 1:
             ratio_set = {grp: 1.0 for grp in self.wordclass_model.model().keys()}
             method_type = 'singleton'
-        elif (self.bnc_pos and
-                self.wordclass_model.groupset() == self.bnc_pos.groupset()):
-            ratio_set = {grp: self.bnc_pos.group_ratios()[grp]
-                         for grp in self.wordclass_model.groupset()}
-            method_type = 'bnc'
-        elif (self.oec_lempos and
-                self.wordclass_model.groupset() == self.oec_lempos.groupset() and
-                self.oec_lempos.covers(self.wordclass_model.base_set_of_wordclasses(), base=True) and
-                self.oec_lempos.sum_ratios(self.wordclass_model.base_set_of_wordclasses()) > 0.9):
-            ratio_set = {grp: self.oec_lempos.group_ratios()[grp]
-                         for grp in self.wordclass_model.groupset()}
-            method_type = 'oeclempos'
-        else:
+
+        if not method_type:
+            probability_set = self.corpus_probability_sets['bnc']
+            if (probability_set and
+                    self.wordclass_model.groupset() == probability_set.groupset()):
+                ratio_set = {grp: probability_set.group_ratios()[grp]
+                             for grp in self.wordclass_model.groupset()}
+                method_type = 'bnc'
+
+        if not method_type:
+            probability_set = self.corpus_probability_sets['oec_lempos']
+            if (probability_set and
+                    self.wordclass_model.groupset() == probability_set.groupset() and
+                    probability_set.covers(self.wordclass_model.base_set_of_wordclasses(), base=True) and
+                    probability_set.sum_ratios(self.wordclass_model.base_set_of_wordclasses()) > 0.9):
+                ratio_set = {grp: probability_set.group_ratios()[grp]
+                             for grp in self.wordclass_model.groupset()}
+                method_type = 'oeclempos'
+
+        if not method_type:
             ratio_set = {pos: item.predicted_frequency() for pos, item
                          in self.wordclass_model.model().items()}
             ratio_set = _crosscheck(ratio_set, self.wordclass_model.model())
@@ -262,8 +273,8 @@ class WordclassRatios(object):
         """
         If all but one of the wordclasses are accounted for by the
         corpus probability set, and the missing wordclass appears
-        to be minor (based on predicted frequency), then accept an estimate
-        for the missing wordclass.
+        to be minor (based on predicted frequency), then we'll just
+        estimate the missing wordclass.
 
         This is most likely to capture VBG+JJ+NN sets where either
         the JJ or NN is missing in BNC. May also capture
@@ -274,8 +285,8 @@ class WordclassRatios(object):
         corpus = kwargs.get('corpus', 'bnc').lower()
         trace = kwargs.get('trace', False)
 
-        # The missing item has to have a predicted frequency below this
-        #   threshold
+        # The missing item has to have a predicted frequency ratio
+        #  below this threshold
         if corpus == 'bnc':
             threshold = 0.2
         elif corpus == 'oec':
@@ -296,12 +307,9 @@ class WordclassRatios(object):
             print('-------------------------------------------------')
             print(self.wordform)
             print('\t%s:' % corpus.upper())
-            if corpus == 'bnc':
-                for wordclass, f in self.bnc_pos.base_ratios().items():
-                    print('\t\t%s\t%0.3g' % (wordclass, f))
-            elif corpus =='oec':
-                for wordclass, f in self.oec_lempos.base_ratios().items():
-                    print('\t\t%s\t%0.3g' % (wordclass, f))
+            probability_set = self.corpus_probability_sets[corpus]
+            for wordclass, f in probability_set.base_ratios().items():
+                print('\t\t%s\t%0.3g' % (wordclass, f))
             print('\tpredictions:')
             for b in model.values():
                 print('\t\t%s\t%0.3g' % (b.wordclass, b.predicted_frequency()))
