@@ -97,9 +97,9 @@ def _compute_average_frequencies(lex_item):
         #   should both be counted as 5 decades
         num_decades = (((end-1)-start) // 10) + 1
         sum_scores = sum([lex_item.scores[d] for d in lex_item.scores
-                          if d >= start and d < end])
+                          if start <= d < end])
         estimated = set([lex_item.est[d] for d in lex_item.est
-                          if d >= start and d < end])
+                          if start <= d < end])
         lex_item.average_frequency[period] = sum_scores / num_decades
         if True in estimated:
             lex_item.estimated[period] = True

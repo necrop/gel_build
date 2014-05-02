@@ -55,6 +55,7 @@ def build_weighted_size_index():
                 else:
                     block_sizes = [(d, block.weighted_size(
                                    revised=entry.is_revised,
+                                   disregard_obsolete=True,
                                    currentYear=d)) for d in DATES]
                     block_sizes = [(d, round(n, 2)) for d, n in block_sizes]
                     block_data = EntryData(int(entry.id),
@@ -73,7 +74,7 @@ def build_weighted_size_index():
             except IndexError:
                 entry_wordclass = '?'
             sizes = [(d, entry.weighted_size(revised=entry.is_revised,
-                     currentYear=d)) for d in DATES]
+                     disregard_obsolete=True, currentYear=d)) for d in DATES]
             sizes = [(d, round(n, 2)) for d, n in sizes]
             num_quotations = entry.num_quotations(force_recount=True,
                                                   include_derivatives=False)

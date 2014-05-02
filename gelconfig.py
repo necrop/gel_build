@@ -24,7 +24,7 @@ PIPELINE = (
     ('frequencyListLemmas', 0),
     ('frequencyCompileNgrams', 0),
     ('frequencyCheckGaps', 0),
-    ('frequencyRecompilePredictors', 0),
+    ('frequencyRecompilePredictors', 1),
     ('frequencyComputeScores', 1),
     ('insertFrequency', 0),
     ('alphabetizeOutput', 0),
