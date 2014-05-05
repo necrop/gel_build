@@ -4,7 +4,9 @@ CorpusProbability
 
 from collections import defaultdict
 
-from frequency.wordclass.utilities import wordclass_base, wordclass_group
+from frequency.wordclass.utilities import (wordclass_base,
+                                           wordclass_group,
+                                           adjust_to_unity)
 
 
 class BncPosProbability(object):
@@ -17,9 +19,11 @@ class BncPosProbability(object):
     words = dict()
     frequency_limit = 1.0
 
-    def __init__(self, filepath=None):
+    def __init__(self, **kwargs):
+        filepath = kwargs.get('filepath', None)
+        supplement = kwargs.get('supplement', None)
         if filepath and not BncPosProbability.words:
-            self._load_data(filepath)
+            self._load_data(filepath, supplement)
 
     def find(self, query):
         try:
@@ -27,12 +31,16 @@ class BncPosProbability(object):
         except KeyError:
             return None
 
-    def _load_data(self, filepath):
-        with open(filepath) as filehandle:
-            for line in filehandle:
-                probset = PosProbabilitySet(line)
-                if probset.fpm >= self.frequency_limit:
-                    BncPosProbability.words[probset.word] = probset
+    def _load_data(self, filepath, supplement):
+        for in_file in (filepath, supplement):
+            if not in_file:
+                continue
+            with open(in_file) as filehandle:
+                for line in filehandle:
+                    if '\t' in line:
+                        probset = PosProbabilitySet(line)
+                        if probset.fpm >= self.frequency_limit:
+                            BncPosProbability.words[probset.word] = probset
 
 
 class OecPosProbability(object):
@@ -142,13 +150,13 @@ class GenericProbabilitySet(object):
 
     def base_ratios(self):
         try:
-            return self.bratios
+            return self._base_ratios
         except AttributeError:
-            self.bratios = defaultdict(lambda: 0)
+            self._base_ratios = defaultdict(lambda: 0)
             for pos, value in self.ratios().items():
                 wc = wordclass_base(pos)
-                self.bratios[wc] += value
-            return self.bratios
+                self._base_ratios[wc] += value
+            return self._base_ratios
 
     def baseset(self):
         return set(self.base_ratios().keys())
@@ -165,13 +173,13 @@ class GenericProbabilitySet(object):
 
     def group_ratios(self):
         try:
-            return self.gratios
+            return self._group_ratios
         except AttributeError:
-            self.gratios = defaultdict(lambda: 0)
+            self._group_ratios = defaultdict(lambda: 0)
             for pos, value in self.ratios().items():
                 grp = wordclass_group(pos)
-                self.gratios[grp] += value
-            return self.gratios
+                self._group_ratios[grp] += value
+            return self._group_ratios
 
     def groupset(self):
         return set(self.group_ratios().keys())
@@ -180,7 +188,7 @@ class GenericProbabilitySet(object):
 class PosProbabilitySet(GenericProbabilitySet):
 
     """
-    Set of frequency probabilities for a given wordform in BNC
+    Set of frequency probabilities for a given wordform in BNC/OEC
     """
 
     def __init__(self, line):
@@ -191,6 +199,22 @@ class PosProbabilitySet(GenericProbabilitySet):
         for p in columns[2:]:
             pos, percentage = p.split('=')
             self.parts[pos] += float(percentage)/100
+
+        # Special handling of interjections -  we take the interjection out
+        # of the equation, but keep separate note of the ratio given to the
+        # interjection originally. This supports adjustments made for
+        # interjections further down the line
+        if 'UH' in self.parts:
+            self.interjection_ratio = self.parts['UH']
+            if self.interjection_ratio > 0.99:
+                # Safeguard - make the ratio slightly less than 1, so that
+                # there'll at least be *something* left for other
+                # parts of speech
+                self.interjection_ratio = 0.99
+            del self.parts['UH']
+            self.parts = adjust_to_unity(self.parts)
+        else:
+            self.interjection_ratio = 0
 
     def almost_covers(self, wordclasses):
         """

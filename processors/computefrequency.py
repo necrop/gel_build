@@ -9,11 +9,11 @@ import gelconfig
 DIRECTORY1 = os.path.join(gelconfig.FREQUENCY_BUILD_DIR, 'types')
 DIRECTORY2 = os.path.join(gelconfig.FREQUENCY_BUILD_DIR, 'types_plus_ngrams')
 DIRECTORY3 = os.path.join(gelconfig.FREQUENCY_BUILD_DIR, 'types_with_frequency')
-#avg_file = config.get('paths', 'frequency_averages')
-RESOURCES_DIR = gelconfig.RESOURCES_DIR
-oec_lempos_prob_file = os.path.join(RESOURCES_DIR, 'corpus', 'oec_lempos_probabilities.txt')
-oec_pos_prob_file = os.path.join(RESOURCES_DIR, 'corpus', 'oec_pos_probabilities.txt')
-bnc_prob_file = os.path.join(RESOURCES_DIR, 'corpus', 'bnc_probabilities.txt')
+
+oec_lempos_prob_file = gelconfig.OEC_LEMPOS_PROBABILITIES
+oec_pos_prob_file = gelconfig.OEC_POS_PROBABILITIES
+bnc_prob_file = gelconfig.BNC_PROBABILITIES
+bnc_supplement_file = gelconfig.BNC_SUPPLEMENT
 
 
 def list_lemmas(src_dir):
@@ -54,7 +54,7 @@ def compute_frequencies():
                                                        OecPosProbability,)
     OecLemposProbability(filepath=oec_lempos_prob_file)
     OecPosProbability(filepath=oec_pos_prob_file)
-    BncPosProbability(filepath=bnc_prob_file)
+    BncPosProbability(filepath=bnc_prob_file, supplement=bnc_supplement_file)
 
     from frequency.calculate_frequency import calculate_frequency
     calculate_frequency(DIRECTORY2, DIRECTORY3)

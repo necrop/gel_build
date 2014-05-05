@@ -7,6 +7,7 @@ from collections import defaultdict
 import gelconfig
 from frequency.frequencyiterator import FrequencyIterator
 from frequency.wordclass.wordclassratios import WordclassRatios
+from frequency.wordclass.interjectionhandler import InterjectionHandler
 from frequency.homographscorer import HomographScorer
 from lex.frequencytable import FrequencyTable
 
@@ -17,11 +18,17 @@ def calculate_frequency(in_dir, out_dir):
     """
     Calculate the frequency to be assigned to each lemma/type.
     """
+    ihandler = InterjectionHandler(in_dir)
+    ihandler.index_interjections()
+
     # Iterate through each entry in the frequency build files
-    freq_iterator = FrequencyIterator(inDir=in_dir,
-                                      outDir=out_dir,
+    freq_iterator = FrequencyIterator(in_dir=in_dir,
+                                      out_dir=out_dir,
                                       message='Calculating frequencies')
     for entry in freq_iterator.iterate():
+        if entry.contains_wordclass('UH'):
+            entry.ngram = ihandler.supplement_ngram(entry.form, entry.ngram)
+
         _apportion_scores(entry)
         for item in entry.lex_items:
             _compute_average_frequencies(item)
@@ -37,7 +44,7 @@ def calculate_frequency(in_dir, out_dir):
 
 
 def _apportion_scores(entry):
-    if entry.ngram is None:
+    if not entry.ngram:
         for lex_item in entry.lex_items:
             lex_item.wordclass_method = 'null'
     else:

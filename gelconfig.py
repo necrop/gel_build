@@ -24,11 +24,11 @@ PIPELINE = (
     ('frequencyListLemmas', 0),
     ('frequencyCompileNgrams', 0),
     ('frequencyCheckGaps', 0),
-    ('frequencyRecompilePredictors', 1),
-    ('frequencyComputeScores', 1),
-    ('insertFrequency', 0),
-    ('alphabetizeOutput', 0),
-    ('indexOutput', 0),
+    ('frequencyRecompilePredictors', 0),
+    ('frequencyComputeScores', 0),
+    ('insertFrequency', 1),
+    ('alphabetizeOutput', 1),
+    ('indexOutput', 1),
 )
 
 
@@ -125,6 +125,8 @@ OEC_POS_PROBABILITIES = os.path.join(RESOURCES_DIR, 'corpus',
                                      'oec_pos_probabilities.txt')
 BNC_PROBABILITIES = os.path.join(RESOURCES_DIR, 'corpus',
                                  'bnc_probabilities.txt')
+BNC_SUPPLEMENT = os.path.join(RESOURCES_DIR, 'corpus',
+                              'bnc_probabilities_supplement.txt')
 
 FREQUENCY_PERIODS = (
     ('1750-59', (1750, 1759)),

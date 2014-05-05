@@ -24,8 +24,8 @@ class FrequencyIterator(object):
     """
 
     def __init__(self, **kwargs):
-        self.in_dir = kwargs.get('inDir')
-        self.out_dir = kwargs.get('outDir')
+        self.in_dir = kwargs.get('in_dir') or kwargs.get('inDir')
+        self.out_dir = kwargs.get('out_dir') or kwargs.get('outDir')
         self.letters = kwargs.get('letters')
         self.verbosity = kwargs.get('verbosity')
         self.message = kwargs.get('message')
